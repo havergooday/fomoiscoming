@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FOMO — Fear Of Missing Out</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #0c0c0c;
+  color: #ccc;
+  font-family: 'Courier New', monospace;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 100vh;
+  padding: 20px 16px;
+}
+
+#app { width: 100%; max-width: 560px; }
+
+/* ── Header ── */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 10px;
+}
+.logo      { font-size: 26px; font-weight: bold; color: #00ee77; letter-spacing: 6px; }
+.tagline   { font-size: 9px; color: #252525; letter-spacing: 3px; margin-top: 3px; }
+.balance   { text-align: right; }
+.bal-label { font-size: 10px; color: #333; letter-spacing: 1px; }
+.bal-amt   { font-size: 22px; font-weight: bold; color: #00ee77; }
+
+/* ── Chart ── */
+#chart {
+  display: block;
+  width: 100%;
+  background: #0e0e0e;
+  border: 1px solid #1a1a1a;
+  border-radius: 4px;
+}
+
+/* ── Multiplier ── */
+#mult {
+  font-size: 62px;
+  font-weight: bold;
+  text-align: center;
+  padding: 8px 0 6px;
+  color: #00ee77;
+  letter-spacing: -3px;
+  font-variant-numeric: tabular-nums;
+  transition: color 0.15s;
+}
+#mult.red   { color: #f33; }
+#mult.amber { color: #fb0; }
+
+/* ── Controls ── */
+.controls { display: flex; gap: 8px; align-items: stretch; }
+
+.btn {
+  border: none;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  font-size: 14px;
+  letter-spacing: 1px;
+  border-radius: 4px;
+  padding: 13px 18px;
+  flex-shrink: 0;
+  transition: opacity .15s, filter .15s;
+}
+.btn:disabled { opacity: .18; cursor: default; }
+.btn:not(:disabled):hover  { filter: brightness(1.15); }
+.btn:not(:disabled):active { filter: brightness(0.88); }
+
+#buyBtn  { background: #00ee77; color: #000; }
+#sellBtn { background: #f33;    color: #fff; }
+
+.bet-box { flex: 1; position: relative; }
+.bet-pfx {
+  position: absolute; left: 11px; top: 50%;
+  transform: translateY(-50%);
+  color: #444; font-size: 16px; pointer-events: none;
+}
+#betInput {
+  width: 100%; height: 100%;
+  background: #141414;
+  border: 1px solid #222;
+  color: #ddd;
+  font: 20px 'Courier New', monospace;
+  padding: 12px 10px 12px 24px;
+  border-radius: 4px;
+  outline: none;
+}
+#betInput:focus    { border-color: #2e2e2e; }
+#betInput:disabled { opacity: .35; }
+
+/* ── Quick bets ── */
+.quick-bets { display: flex; gap: 6px; margin-top: 6px; }
+.qb {
+  flex: 1;
+  background: #141414;
+  border: 1px solid #1e1e1e;
+  color: #555;
+  font: 11px 'Courier New', monospace;
+  padding: 5px 0;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background .1s, color .1s;
+}
+.qb:hover    { background: #1e1e1e; color: #888; }
+.qb:disabled { opacity: .25; cursor: default; }
+
+/* ── Status ── */
+#status {
+  text-align: center;
+  font-size: 12px;
+  color: #555;
+  padding: 8px 0 6px;
+  min-height: 28px;
+  letter-spacing: .3px;
+}
+
+/* ── History ── */
+#history { display: flex; flex-wrap: wrap; gap: 4px; min-height: 22px; }
+.chip {
+  font-size: 11px; font-weight: bold;
+  padding: 2px 7px; border-radius: 3px;
+}
+.chip.w { background: #011508; color: #0b5; border: 1px solid #012a10; }
+.chip.l { background: #150001; color: #b22; border: 1px solid #250002; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="header">
+    <div>
+      <div class="logo">FOMO</div>
+      <div class="tagline">FEAR OF MISSING OUT</div>
+    </div>
+    <div class="balance">
+      <div class="bal-label">BALANCE</div>
+      <div class="bal-amt" id="balEl">$1,000</div>
+    </div>
+  </div>
+
+  <canvas id="chart"></canvas>
+
+  <div id="mult">1.00x</div>
+
+  <div class="controls">
+    <button class="btn" id="buyBtn"  onclick="onBuy()">BUY</button>
+    <div class="bet-box">
+      <span class="bet-pfx">$</span>
+      <input id="betInput" type="number" value="100" min="1" step="10">
+    </div>
+    <button class="btn" id="sellBtn" onclick="onSell()" disabled>SELL</button>
+  </div>
+
+  <div class="quick-bets">
+    <button class="qb" id="qb10"  onclick="setBet(10)">$10</button>
+    <button class="qb" id="qb50"  onclick="setBet(50)">$50</button>
+    <button class="qb" id="qb100" onclick="setBet(100)">$100</button>
+    <button class="qb" id="qbAll" onclick="setBet('all')">ALL IN</button>
+  </div>
+
+  <div id="status">BUY를 눌러 시작하세요</div>
+  <div id="history"></div>
+</div>
+
+<script>
+// ── Canvas setup ──────────────────────────────────────────────
+const canvas = document.getElementById('chart');
+const ctx    = canvas.getContext('2d');
+
+function resizeCanvas() {
+  canvas.width       = canvas.offsetWidth;
+  canvas.height      = 260;
+  canvas.style.height = '260px';
+}
+resizeCanvas();
+window.addEventListener('resize', () => { resizeCanvas(); drawChart(); });
+
+// ── Constants ─────────────────────────────────────────────────
+const TICK_MS  = 50;
+const WIN_SIZE = 220;
+const GROWTH   = 0.015; // base multiplier growth per tick (~1.5%)
+
+// ── State ─────────────────────────────────────────────────────
+let bal     = 1000;
+let bet     = 0;
+let mult    = 1.0;
+let crashAt = 1.0;
+let soldAt  = 0;
+let gs      = 'idle';  // idle | running | sold | done
+
+// pts: {m: number, p: 'r'|'a'|'c'}  r=running  a=aftersell  c=crash
+let pts   = [];
+let timer = null;
+
+// ── Helpers ───────────────────────────────────────────────────
+const $   = id => document.getElementById(id);
+const fmt = n  => '$' + Math.round(n).toLocaleString();
+
+function genCrashPoint() {
+  // ~6% chance of near-instant crash
+  if (Math.random() < 0.06) return 1 + Math.random() * 0.07;
+  // Heavy-tail: median ~2x, rare spikes to 50–100x
+  return Math.min(100, Math.max(1.05, 1 / (Math.random() * 0.95)));
+}
+
+function setMultDisplay(val, phase) {
+  const el = $('mult');
+  el.textContent = val.toFixed(2) + 'x';
+  el.className = phase === 'c' ? 'red' : phase === 'a' ? 'amber' : '';
+}
+
+function setStatus(t) { $('status').textContent = t; }
+function updateBal()  { $('balEl').textContent = fmt(bal); }
+
+function setBet(v) {
+  if (gs !== 'idle') return;
+  $('betInput').value = v === 'all' ? Math.max(1, Math.floor(bal)) : v;
+}
+
+function setControlsActive(on) {
+  $('buyBtn').disabled   = !on;
+  $('betInput').disabled = !on;
+  ['qb10','qb50','qb100','qbAll'].forEach(id => $(id).disabled = !on);
+}
+
+// ── Game logic ────────────────────────────────────────────────
+function onBuy() {
+  bet = Math.floor(parseFloat($('betInput').value) || 0);
+  if (bet <= 0)    { setStatus('⚠ 베팅 금액을 입력하세요'); return; }
+  if (bet > bal)   { setStatus('⚠ 잔고가 부족합니다');     return; }
+
+  bal    -= bet;
+  updateBal();
+
+  mult    = 1.0;
+  soldAt  = 0;
+  crashAt = genCrashPoint();
+  pts     = [{ m: 1, p: 'r' }];
+  gs      = 'running';
+
+  setControlsActive(false);
+  $('sellBtn').disabled = false;
+  setMultDisplay(1, 'r');
+  setStatus('📈 상승 중... 언제 팔 것인가?');
+
+  clearInterval(timer);
+  timer = setInterval(gameTick, TICK_MS);
+}
+
+function gameTick() {
+  const noise = (Math.random() - 0.5) * 0.01;
+  mult = Math.max(1.0, mult * (1 + GROWTH + noise));
+
+  pts.push({ m: mult, p: gs === 'sold' ? 'a' : 'r' });
+
+  if (gs === 'running') {
+    setMultDisplay(mult, 'r');
+    const profit = Math.round(bet * mult) - bet;
+    setStatus(`📈 ${mult.toFixed(2)}x  |  판매시 ${profit >= 0 ? '+' : ''}${fmt(profit)}`);
+  } else {
+    setMultDisplay(mult, 'a');
+    setStatus(`✅ ${soldAt.toFixed(2)}x에 판매 완료 — 그래프는 계속 오릅니다...`);
+  }
+
+  if (mult >= crashAt) { executeCrash(); return; }
+  drawChart();
+}
+
+function onSell() {
+  if (gs !== 'running') return;
+  gs     = 'sold';
+  soldAt = mult;
+  bal   += Math.round(bet * soldAt);
+  updateBal();
+
+  $('sellBtn').disabled = true;
+  setMultDisplay(soldAt, 'a');
+  addToHistory(soldAt, true);
+}
+
+function executeCrash() {
+  clearInterval(timer);
+  pts.push({ m: 0, p: 'c' });
+  const wasSold = gs === 'sold';
+  gs = 'done';
+  drawChart();
+
+  setMultDisplay(crashAt, 'c');
+
+  if (wasSold) {
+    const profit = Math.round(bet * soldAt) - bet;
+    setStatus(
+      `💥 ${crashAt.toFixed(2)}x 폭락! ` +
+      `당신은 ${soldAt.toFixed(2)}x에 팔았습니다.  ` +
+      `${profit >= 0 ? '+' : ''}${fmt(profit)}`
+    );
+  } else {
+    setStatus(`💥 ${crashAt.toFixed(2)}x 폭락! ${fmt(bet)} 손실`);
+    addToHistory(crashAt, false);
+  }
+
+  setTimeout(() => {
+    setControlsActive(true);
+    $('sellBtn').disabled = true;
+    gs = 'idle';
+    setMultDisplay(1, '');
+    setStatus(bal > 0 ? 'BUY를 눌러 다시 시작하세요' : '💸 파산! 새로고침하세요');
+  }, 2200);
+}
+
+function addToHistory(m, win) {
+  const h  = $('history');
+  const el = document.createElement('div');
+  el.className  = 'chip ' + (win ? 'w' : 'l');
+  el.textContent = m.toFixed(2) + 'x';
+  h.insertBefore(el, h.firstChild);
+  while (h.children.length > 22) h.removeChild(h.lastChild);
+}
+
+// ── Chart ─────────────────────────────────────────────────────
+function drawChart() {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const PL = 40, PR = 10, PT = 12, PB = 22;
+  const cw = W - PL - PR;
+  const ch = H - PT - PB;
+
+  const start = Math.max(0, pts.length - WIN_SIZE);
+  const vis   = pts.slice(start);
+  const n     = vis.length;
+
+  const maxM = Math.max(...vis.map(p => p.m), 2) * 1.12;
+
+  // Pin newest point to right edge
+  const offset = WIN_SIZE - n;
+  const xOf = i => PL + ((i + offset) / (WIN_SIZE - 1)) * cw;
+  const yOf = m => PT + ch - (m / maxM) * ch;
+
+  // Grid lines
+  ctx.font      = '9px Courier New';
+  ctx.textAlign = 'right';
+  for (let g = 1; g <= 4; g++) {
+    const mv = (maxM * g) / 4;
+    const y  = yOf(mv);
+    ctx.strokeStyle = '#161616';
+    ctx.lineWidth   = 1;
+    ctx.beginPath(); ctx.moveTo(PL, y); ctx.lineTo(PL + cw, y); ctx.stroke();
+    ctx.fillStyle = '#2c2c2c';
+    ctx.fillText(mv.toFixed(1) + 'x', PL - 3, y + 3);
+  }
+  ctx.strokeStyle = '#181818';
+  ctx.lineWidth   = 1;
+  ctx.beginPath(); ctx.moveTo(PL, PT); ctx.lineTo(PL, PT + ch); ctx.stroke();
+
+  if (n < 2) return;
+
+  // Segment boundaries
+  const sellIdx  = vis.findIndex(p => p.p === 'a');
+  const crashIdx = vis.findIndex(p => p.p === 'c');
+
+  const gEnd   = sellIdx  > -1 ? sellIdx
+               : crashIdx > -1 ? crashIdx - 1
+               : n - 1;
+  const yStart = sellIdx > -1 ? sellIdx : -1;
+  const yEnd   = crashIdx > -1 ? crashIdx - 1 : n - 1;
+
+  function drawSeg(from, to, color) {
+    if (from < 0 || from > to) return;
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 2;
+    ctx.lineJoin    = 'round';
+    ctx.shadowColor = color;
+    ctx.shadowBlur  = 5;
+    ctx.moveTo(xOf(from), yOf(vis[from].m));
+    for (let i = from + 1; i <= to; i++) ctx.lineTo(xOf(i), yOf(vis[i].m));
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  // Green: running phase
+  drawSeg(0, gEnd, '#00ee77');
+
+  // Yellow: after-sell phase
+  if (yStart > -1) drawSeg(yStart, yEnd, '#ffbb00');
+
+  // Red: crash drop
+  if (crashIdx > 0) {
+    const prev = vis[crashIdx - 1];
+    ctx.beginPath();
+    ctx.strokeStyle = '#ff3333';
+    ctx.lineWidth   = 3;
+    ctx.shadowColor = '#ff3333';
+    ctx.shadowBlur  = 10;
+    ctx.moveTo(xOf(crashIdx - 1), yOf(prev.m));
+    ctx.lineTo(xOf(crashIdx),     PT + ch);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  // SOLD marker
+  if (sellIdx > -1) {
+    const sx = xOf(sellIdx), sy = yOf(vis[sellIdx].m);
+    ctx.beginPath();
+    ctx.arc(sx, sy, 5, 0, Math.PI * 2);
+    ctx.fillStyle   = '#ffbb00';
+    ctx.shadowColor = '#ffbb00';
+    ctx.shadowBlur  = 12;
+    ctx.fill();
+    ctx.shadowBlur  = 0;
+    ctx.fillStyle   = '#ffbb00';
+    ctx.font        = 'bold 9px Courier New';
+    ctx.textAlign   = 'center';
+    ctx.fillText('SOLD', sx, sy - 10);
+  }
+
+  // Live dot (glowing)
+  if (gs !== 'done') {
+    const li = crashIdx > -1 ? crashIdx - 1 : n - 1;
+    if (li >= 0) {
+      const dc = vis[li].p === 'a' ? '#ffbb00' : '#00ee77';
+      ctx.beginPath();
+      ctx.arc(xOf(li), yOf(vis[li].m), 4, 0, Math.PI * 2);
+      ctx.fillStyle   = dc;
+      ctx.shadowColor = dc;
+      ctx.shadowBlur  = 14;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+  }
+}
+
+// Draw empty chart on load
+drawChart();
+</script>
+</body>
+</html>
